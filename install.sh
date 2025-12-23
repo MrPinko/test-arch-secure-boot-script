@@ -5,6 +5,8 @@ set -euo pipefail
 # CONFIG
 # ========================
 ESP="/boot"   # EFI System Partition mountpoint
+# change also ESP="/boot" inside the kernel-signing hook
+KERNEL="$ESP/vmlinuz-linux"
 
 # ========================
 # Install yay
@@ -84,7 +86,6 @@ sudo openssl x509 -outform DER -in MOK.crt -out MOK.cer
 # Sign Kernel
 # ========================
 echo "==> Signing the kernel"
-KERNEL="$ESP/vmlinuz-linux"
 
 sudo sbsign \
     --key "$ESP/EFI/BOOT/Mok/MOK.key" \
@@ -135,12 +136,16 @@ ESP="/boot"
 KEY="$ESP/EFI/BOOT/Mok/MOK.key"
 CRT="$ESP/EFI/BOOT/Mok/MOK.crt"
 
-# Only sign if unsigned
-if ! sbverify --cert "$CRT" "$kernel" &>/dev/null; then
-    echo "Signing kernel: $kernel"
-    sbsign --key "$KEY" --cert "$CRT" --output "$kernel" "$kernel"
-fi
-EOF
+# Find all kernel images in $ESP
+for kernel in "$ESP"/vmlinuz*; do
+    [[ -f "$kernel" ]] || continue  # skip if no files match
+
+    # Only sign if unsigned
+    if ! sbverify --cert "$CRT" "$kernel" &>/dev/null; then
+        echo "Signing kernel: $kernel"
+        sbsign --key "$KEY" --cert "$CRT" --output "$kernel" "$kernel"
+    fi
+done
 
 sudo chmod +x /etc/initcpio/post/kernel-sbsign
 
